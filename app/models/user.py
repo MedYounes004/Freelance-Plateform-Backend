@@ -1,7 +1,6 @@
-from app import mongo, bcrypt
+from app import bcrypt, mongo
 from bson import ObjectId
-from datetime import datetime
-
+from datetime import datetime, timezone
 
 # ──────────────────────────────────────────
 # User Model
@@ -17,7 +16,7 @@ class UserModel:
             'password': hashed,
             'role': role,
             'subscription': 'free',
-            'created_at': datetime.utcnow()
+            'created_at': datetime.now(timezone.utc)
         }
         result = mongo.db.users.insert_one(user)
         return str(result.inserted_id)
