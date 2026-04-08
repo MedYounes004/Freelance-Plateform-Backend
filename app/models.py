@@ -17,7 +17,13 @@ class UserModel:
             'password': hashed,
             'role': role,
             'subscription': 'free',
+<<<<<<< Updated upstream:app/models.py
             'created_at': datetime.utcnow()
+=======
+            'bio': '',
+            'avatar': '',
+            'created_at': datetime.now(timezone.utc)
+>>>>>>> Stashed changes:app/models/user.py
         }
         result = mongo.db.users.insert_one(user)
         return str(result.inserted_id)
@@ -37,9 +43,11 @@ class UserModel:
     @staticmethod
     def serialize(user):
         return {
-            'id': str(user['_id']),
-            'name': user.get('name'),
-            'email': user.get('email'),
-            'role': user.get('role'),
+            'id':           str(user['_id']),
+            'name':         user.get('name'),
+            'email':        user.get('email'),
+            'role':         user.get('role'),
             'subscription': user.get('subscription'),
+            'bio':          user.get('bio', ''),      # ← added
+            'avatar':       user.get('avatar', ''),   # ← added
         }

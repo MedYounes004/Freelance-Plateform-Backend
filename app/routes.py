@@ -1,6 +1,12 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+<<<<<<< Updated upstream:app/routes.py
 from app.models import UserModel
+=======
+from app.models.user import UserModel
+from bson import ObjectId
+from app import mongo, bcrypt
+>>>>>>> Stashed changes:app/routes/auth.py
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -69,4 +75,38 @@ def me():
     user = UserModel.find_by_id(user_id)
     if not user:
         return jsonify({'message': 'User not found'}), 404
+    return jsonify(UserModel.serialize(user)), 200
+
+
+# ── Update Profile ─────────────────────────
+@auth_bp.route('/api/auth/update', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    updates = {}
+
+    if data.get('name'):
+        updates['name'] = data['name']
+    if data.get('role'):
+        updates['role'] = data['role']
+    if data.get('bio'):
+        updates['bio'] = data['bio']
+    if data.get('avatar'):
+        updates['avatar'] = data['avatar']    # ← base64 string
+    if data.get('password'):
+        updates['password'] = bcrypt.generate_password_hash(
+            data['password']
+        ).decode('utf-8')
+
+    if not updates:
+        return jsonify({'message': 'Nothing to update'}), 400
+
+    mongo.db.users.update_one(
+        {'_id': ObjectId(user_id)},
+        {'$set': updates}
+    )
+
+    user = UserModel.find_by_id(user_id)
     return jsonify(UserModel.serialize(user)), 200
