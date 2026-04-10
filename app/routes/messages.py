@@ -1,171 +1,87 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime
-from bson.objectid import ObjectId
-from app import mongo
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from bson import ObjectId
 
-messages_bp = Blueprint('messages', __name__, url_prefix='/api/messages')
-
-def get_messages_collection():
-    """Get messages collection from MongoDB"""
-    if mongo is None:
-        raise RuntimeError('MongoDB not initialized. Call init_mongo(app) first.')
-    return mongo.db.messages
+from app.models.user import UserModel
+from app.models.message import MessageModel
 
 
-def message_to_dict(doc):
-    """Convert MongoDB document to dict for JSON response"""
-    if doc is None:
-        return None
-    return {
-        'id': str(doc.get('_id')),
-        'text': doc.get('text'),
-        'sender': doc.get('sender'),
-        'recipient': doc.get('recipient'),
-        'timestamp': doc.get('timestamp').isoformat() if doc.get('timestamp') else None,
-        'read': doc.get('read', False),
-    }
+messages_bp = Blueprint('messages', __name__)
 
 
-@messages_bp.route('', methods=['GET'])
-def get_messages():
-    """
-    Fetch all messages from MongoDB.
-
-    Optional Query Parameters:
-    - sender: Filter by sender name
-    - recipient: Filter by recipient name
-    - limit: Number of messages to return (default 50, max 500)
-    - offset: Pagination offset (default 0)
-
-    Returns:
-    List of messages sorted by timestamp (oldest first)
-    """
-    try:
-        collection = get_messages_collection()
-
-        sender = request.args.get('sender')
-        recipient = request.args.get('recipient')
-        limit = min(int(request.args.get('limit', 50)), 500)
-        offset = int(request.args.get('offset', 0))
-
-        # Build filter query
-        filter_query = {}
-        if sender:
-            filter_query['sender'] = sender
-        if recipient:
-            filter_query['recipient'] = recipient
-
-        # Query with pagination
-        messages = list(
-            collection.find(filter_query)
-            .sort('timestamp', 1)
-            .skip(offset)
-            .limit(limit)
-        )
-
-        return jsonify([message_to_dict(msg) for msg in messages]), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e), 'type': 'GET_MESSAGES_ERROR'}), 500
+def _serialize_message(message):
+	return {
+		'id': str(message['_id']),
+		'senderId': str(message['sender_id']),
+		'recipientId': str(message['recipient_id']),
+		'text': message.get('text', ''),
+		'timestamp': message.get('created_at').isoformat() if message.get('created_at') else None,
+	}
 
 
-@messages_bp.route('', methods=['POST'])
+@messages_bp.route('/api/conversations', methods=['GET'])
+@jwt_required()
+def get_conversations():
+	user_id = get_jwt_identity()
+
+	try:
+		rows = MessageModel.list_conversations_for_user(user_id)
+	except Exception:
+		return jsonify({'message': 'Invalid user id'}), 400
+
+	result = []
+	for row in rows:
+		other_id = str(row['_id'])
+		other_user = UserModel.find_by_id(other_id)
+		if not other_user:
+			continue
+
+		result.append({
+			'userId': other_id,
+			'name': other_user.get('name') or other_user.get('email'),
+			'lastMessage': row.get('lastMessage', ''),
+			'timestamp': row.get('lastTimestamp').isoformat() if row.get('lastTimestamp') else None,
+		})
+
+	return jsonify(result), 200
+
+
+@messages_bp.route('/api/messages/<recipient_id>', methods=['GET'])
+@jwt_required()
+def get_messages(recipient_id):
+	sender_id = get_jwt_identity()
+
+	try:
+		ObjectId(recipient_id)
+	except Exception:
+		return jsonify({'message': 'Invalid recipient id'}), 400
+
+	messages = MessageModel.get_between_users(sender_id, recipient_id)
+	return jsonify([_serialize_message(msg) for msg in messages]), 200
+
+
+@messages_bp.route('/api/messages', methods=['POST'])
+@jwt_required()
 def send_message():
-    """
-    Send a new message to MongoDB.
+	sender_id = get_jwt_identity()
+	data = request.get_json() or {}
 
-    Request Body (JSON):
-    {
-        "text": "message text",
-        "sender": "sender name or email",
-        "recipient": "recipient name (optional)"
-    }
+	text = (data.get('text') or '').strip()
+	recipient_id = (data.get('recipientId') or '').strip()
 
-    Returns:
-    The created message with id and timestamp
-    """
-    try:
-        data = request.get_json()
+	if not text or not recipient_id:
+		return jsonify({'message': 'text and recipientId are required'}), 400
 
-        if not data:
-            return jsonify({'error': 'Request body is required', 'type': 'MISSING_BODY'}), 400
+	if recipient_id == sender_id:
+		return jsonify({'message': 'Cannot send message to yourself'}), 400
 
-        text = data.get('text', '').strip()
-        sender = data.get('sender', '').strip()
-        recipient = data.get('recipient', '').strip() if data.get('recipient') else None
+	try:
+		recipient = UserModel.find_by_id(recipient_id)
+	except Exception:
+		recipient = None
 
-        if not text:
-            return jsonify({'error': 'Message text is required', 'type': 'MISSING_TEXT'}), 400
-        if not sender:
-            return jsonify({'error': 'Sender is required', 'type': 'MISSING_SENDER'}), 400
-        if len(text) > 1000:
-            return jsonify({'error': 'Message too long (max 1000 chars)', 'type': 'TEXT_TOO_LONG'}), 400
+	if not recipient:
+		return jsonify({'message': 'Recipient not found'}), 404
 
-        collection = get_messages_collection()
-
-        # Create message document
-        message_doc = {
-            'text': text,
-            'sender': sender,
-            'recipient': recipient,
-            'timestamp': datetime.utcnow(),
-            'read': False,
-            'created_at': datetime.utcnow(),
-        }
-
-        # Insert into MongoDB
-        result = collection.insert_one(message_doc)
-        message_doc['_id'] = result.inserted_id
-
-        return jsonify(message_to_dict(message_doc)), 201
-
-    except Exception as e:
-        return jsonify({'error': str(e), 'type': 'POST_MESSAGE_ERROR'}), 500
-
-
-@messages_bp.route('/<message_id>', methods=['GET'])
-def get_message(message_id):
-    """
-    Get a single message by ID from MongoDB.
-    """
-    try:
-        collection = get_messages_collection()
-
-        # Convert string ID to ObjectId
-        try:
-            obj_id = ObjectId(message_id)
-        except Exception:
-            return jsonify({'error': 'Invalid message ID format', 'type': 'INVALID_ID'}), 400
-
-        message = collection.find_one({'_id': obj_id})
-        if not message:
-            return jsonify({'error': 'Message not found', 'type': 'NOT_FOUND'}), 404
-
-        return jsonify(message_to_dict(message)), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e), 'type': 'GET_MESSAGE_ERROR'}), 500
-
-
-@messages_bp.route('/<message_id>', methods=['DELETE'])
-def delete_message(message_id):
-    """
-    Delete a message by ID from MongoDB.
-    """
-    try:
-        collection = get_messages_collection()
-
-        try:
-            obj_id = ObjectId(message_id)
-        except Exception:
-            return jsonify({'error': 'Invalid message ID format', 'type': 'INVALID_ID'}), 400
-
-        result = collection.delete_one({'_id': obj_id})
-
-        if result.deleted_count == 0:
-            return jsonify({'error': 'Message not found', 'type': 'NOT_FOUND'}), 404
-
-        return jsonify({'message': 'Message deleted', 'id': message_id}), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e), 'type': 'DELETE_MESSAGE_ERROR'}), 500
+	message = MessageModel.create_message(sender_id, recipient_id, text)
+	return jsonify(_serialize_message(message)), 201

@@ -1,27 +1,61 @@
+from datetime import datetime, timezone
+from bson import ObjectId
 from app import mongo
-from datetime import datetime
-import uuid
 
 
-class Message(mongo.Model):
-    __tablename__ = 'messages'
+class MessageModel:
+	@staticmethod
+	def create_message(sender_id, recipient_id, text):
+		message = {
+			'sender_id': ObjectId(sender_id),
+			'recipient_id': ObjectId(recipient_id),
+			'text': text,
+			'created_at': datetime.now(timezone.utc),
+		}
+		result = mongo.db.messages.insert_one(message)
+		message['_id'] = result.inserted_id
+		return message
 
-    id = mongo.Column(mongo.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    text = mongo.Column(mongo.String(1000), nullable=False)
-    sender = mongo.Column(mongo.String(255), nullable=False)
-    timestamp = mongo.Column(mongo.DateTime, nullable=False, default=datetime.utcnow)
-    recipient = mongo.Column(mongo.String(255), nullable=True)
-    created_at = mongo.Column(mongo.DateTime, nullable=False, default=datetime.utcnow)
+	@staticmethod
+	def get_between_users(user_a_id, user_b_id):
+		user_a = ObjectId(user_a_id)
+		user_b = ObjectId(user_b_id)
 
-    def __repr__(self):
-        return f'<Message {self.id}: {self.sender} -> {self.recipient}>'
+		query = {
+			'$or': [
+				{'sender_id': user_a, 'recipient_id': user_b},
+				{'sender_id': user_b, 'recipient_id': user_a},
+			]
+		}
 
-    def to_dict(self):
-        """Convert message to JSON-serializable dict"""
-        return {
-            'id': self.id,
-            'text': self.text,
-            'sender': self.sender,
-            'timestamp': self.timestamp.isoformat(),
-            'recipient': self.recipient,
-        }
+		return list(mongo.db.messages.find(query).sort('created_at', 1))
+
+	@staticmethod
+	def list_conversations_for_user(user_id):
+		user_oid = ObjectId(user_id)
+
+		pipeline = [
+			{'$match': {'$or': [{'sender_id': user_oid}, {'recipient_id': user_oid}]}},
+			{'$sort': {'created_at': -1}},
+			{
+				'$addFields': {
+					'other_user_id': {
+						'$cond': [
+							{'$eq': ['$sender_id', user_oid]},
+							'$recipient_id',
+							'$sender_id'
+						]
+					}
+				}
+			},
+			{
+				'$group': {
+					'_id': '$other_user_id',
+					'lastMessage': {'$first': '$text'},
+					'lastTimestamp': {'$first': '$created_at'}
+				}
+			},
+			{'$sort': {'lastTimestamp': -1}}
+		]
+
+		return list(mongo.db.messages.aggregate(pipeline))
