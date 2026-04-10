@@ -90,7 +90,7 @@ def update_profile():
     if data.get('bio'):
         updates['bio'] = data['bio']
     if data.get('avatar'):
-        updates['avatar'] = data['avatar']    # ← base64 string
+        updates['avatar'] = data['avatar']
     if data.get('password'):
         updates['password'] = bcrypt.generate_password_hash(
             data['password']
