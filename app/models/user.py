@@ -1,6 +1,7 @@
-from app import bcrypt, mongo
+from app import mongo, bcrypt
 from bson import ObjectId
-from datetime import datetime, timezone
+from datetime import datetime
+
 
 # ──────────────────────────────────────────
 # User Model
@@ -16,7 +17,7 @@ class UserModel:
             'password': hashed,
             'role': role,
             'subscription': 'free',
-            'created_at': datetime.now(timezone.utc)
+            'created_at': datetime.utcnow()
         }
         result = mongo.db.users.insert_one(user)
         return str(result.inserted_id)
@@ -36,9 +37,9 @@ class UserModel:
     @staticmethod
     def serialize(user):
         return {
-            'id': str(user['_id']),
-            'name': user.get('name'),
-            'email': user.get('email'),
-            'role': user.get('role'),
+            'id':           str(user['_id']),
+            'name':         user.get('name'),
+            'email':        user.get('email'),
+            'role':         user.get('role'),
             'subscription': user.get('subscription'),
         }

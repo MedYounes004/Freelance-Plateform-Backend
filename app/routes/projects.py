@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models.projects import ProjectModel
-from app.models.user import UserModel
+from app.models.project import ProjectModel
+from app.models import UserModel
 
 projects_bp = Blueprint('projects', __name__)
 
@@ -23,6 +23,8 @@ def get_projects():
 
 
 # ── GET /api/projects/my ──────────────────────────────────────────────────────
+#client: ses projets
+#freelancer: projets disponibles (status pending par défaut)
 @projects_bp.route('/api/projects/my', methods=['GET'])
 @jwt_required()
 def get_my_projects():
@@ -79,7 +81,7 @@ def get_client_projects(client_id):
     return jsonify(result), 200
 
 
-# ── GET /api/projects/<id> ────────────────────────────────────────────────────
+# ── GET /api/projects/<project_id> ────────────────────────────────────────────────────
 @projects_bp.route('/api/projects/<string:project_id>', methods=['GET'])
 def get_project(project_id):
     project = ProjectModel.find_by_id(project_id)
@@ -112,9 +114,21 @@ def create_project():
     if missing:
         return jsonify({'message': f'Missing fields: {", ".join(missing)}'}), 422
 
+    try:
+        float(data.get('budget', 0))
+    except (TypeError, ValueError):
+        return jsonify({'message': 'Invalid budget value'}), 422
+
+    payload = dict(data)
+    payload['client'] = user.get('name', '')
+    payload.setdefault('clientAvatar', user.get('avatar', ''))
+
     # Utiliser l'ID de l'utilisateur connecté comme client_id
-    project_id = ProjectModel.create(data, user_id)
+    project_id = ProjectModel.create(payload, user_id)
     project    = ProjectModel.find_by_id(project_id)
+
+    if not project:
+        return jsonify({'message': 'Failed to create project'}), 500
 
     return jsonify({
         'message': 'Project created successfully',
@@ -122,7 +136,7 @@ def create_project():
     }), 201
 
 
-# ── PUT /api/projects/<id> ────────────────────────────────────────────────────
+# ── PUT /api/projects/<project_id> ────────────────────────────────────────────────────
 @projects_bp.route('/api/projects/<string:project_id>', methods=['PUT'])
 @jwt_required()
 def update_project(project_id):
@@ -146,7 +160,8 @@ def update_project(project_id):
     return jsonify({'message': 'Project updated successfully'}), 200
 
 
-# ── PATCH /api/projects/<id>/status ───────────────────────────────────────────
+# ── PATCH /api/projects/<project_id>/status ───────────────────────────────────────────
+#changement de statut avec validation
 @projects_bp.route('/api/projects/<string:project_id>/status', methods=['PATCH'])
 @jwt_required()
 def update_project_status(project_id):
@@ -175,7 +190,7 @@ def update_project_status(project_id):
     return jsonify({'message': 'Project status updated successfully'}), 200
 
 
-# ── DELETE /api/projects/<id> ─────────────────────────────────────────────────
+# ── DELETE /api/projects/<project_id> ─────────────────────────────────────────────────
 @projects_bp.route('/api/projects/<string:project_id>', methods=['DELETE'])
 @jwt_required()
 def delete_project(project_id):
