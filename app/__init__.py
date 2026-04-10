@@ -33,11 +33,15 @@ def create_app():
     from app.routes.auth import auth_bp
     from app.routes.projects import projects_bp
     from app.routes.proposals import proposals_bp
+    from app.routes.cv import cv_bp
     from app.routes.messages import messages_bp
     from app.routes.users import users_bp
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(projects_bp)
     app.register_blueprint(proposals_bp)
+    app.register_blueprint(cv_bp)
     app.register_blueprint(messages_bp)
     app.register_blueprint(users_bp)
+
     return app

@@ -1,6 +1,6 @@
 from app import mongo, bcrypt
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ──────────────────────────────────────────
@@ -17,7 +17,9 @@ class UserModel:
             'password': hashed,
             'role': role,
             'subscription': 'free',
-            'created_at': datetime.utcnow()
+            'bio': '',
+            'avatar': '',
+            'created_at': datetime.now(timezone.utc),
         }
         result = mongo.db.users.insert_one(user)
         return str(result.inserted_id)
@@ -42,4 +44,6 @@ class UserModel:
             'email':        user.get('email'),
             'role':         user.get('role'),
             'subscription': user.get('subscription'),
+            'bio':          user.get('bio', ''),
+            'avatar':       user.get('avatar', ''),
         }
