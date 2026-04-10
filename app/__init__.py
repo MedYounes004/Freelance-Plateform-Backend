@@ -18,6 +18,18 @@ def create_app():
     jwt.init_app(app)
     CORS(app)
 
+    @jwt.unauthorized_loader
+    def unauthorized_callback(reason):
+        return {'message': f'Unauthorized: {reason}'}, 401
+
+    @jwt.invalid_token_loader
+    def invalid_token_callback(reason):
+        return {'message': f'Invalid token: {reason}'}, 401
+
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        return {'message': 'Token has expired'}, 401
+
     from app.routes.auth import auth_bp
     from app.routes.projects import projects_bp
     from app.routes.proposals import proposals_bp

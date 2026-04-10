@@ -1,17 +1,28 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
-from app.models.projects import ProjectModel
-from app.models.proposals import ProposalModel
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.models.project import ProjectModel, ProposalModel
+from app.models import UserModel
 
 proposals_bp = Blueprint('proposals', __name__)
 
 
 # ── GET /api/proposals/<project_id> ───────────────────────────────────────────
 @proposals_bp.route('/api/proposals/<string:project_id>', methods=['GET'])
+@jwt_required()
 def get_proposals(project_id):
+    user_id = get_jwt_identity()
+    user = UserModel.find_by_id(user_id)
+
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
     project = ProjectModel.find_by_id(project_id)
     if not project:
         return jsonify({'message': 'Project not found'}), 404
+
+    # Only client owners can view proposals related to their own projects.
+    if user.get('role') != 'client' or project.get('client_id') != user_id:
+        return jsonify({'message': 'Access denied'}), 403
 
     page  = request.args.get('page',  1,  type=int)
     limit = request.args.get('limit', 10, type=int)
@@ -31,9 +42,18 @@ def get_proposal(proposal_id):
 
 
 # ── POST /api/proposals ───────────────────────────────────────────────────────
-@proposals_bp.route('/api/proposals', methods=['POST'])
-# @jwt_required()  # ← COMMENTÉ POUR TESTER - À RÉACTIVER PLUS TARD!
+@proposals_bp.route('/api/proposals', methods=['POST'] )  
+@jwt_required()
 def create_proposal():
+    user_id = get_jwt_identity()
+    user = UserModel.find_by_id(user_id)
+
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    if user.get('role') != 'freelancer':
+        return jsonify({'message': 'Only freelancers can submit proposals'}), 403
+
     data = request.get_json(silent=True)
     if not data:
         return jsonify({'message': 'No JSON body provided'}), 400
@@ -47,9 +67,7 @@ def create_proposal():
     if not project:
         return jsonify({'message': 'Project not found'}), 404
 
-    # Utiliser un freelancer_id par défaut pour les tests
-    freelancer_id = 'test_freelancer_123'  # ← TEMPORAIRE
-    proposal_id   = ProposalModel.create(data, freelancer_id)
+    proposal_id = ProposalModel.create(data, user_id)
 
     # Increment proposals counter on the project
     ProjectModel.increment_proposals(data['projectId'], delta=1)
