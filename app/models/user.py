@@ -46,4 +46,5 @@ class UserModel:
             'subscription': user.get('subscription'),
             'bio':          user.get('bio', ''),
             'avatar':       user.get('avatar', ''),
+            'createdAt':    user.get('created_at').isoformat() if user.get('created_at') else None,
         }
