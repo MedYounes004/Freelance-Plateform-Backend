@@ -21,7 +21,7 @@ def get_proposals(project_id):
         return jsonify({'message': 'Project not found'}), 404
 
     # Only client owners can view proposals related to their own projects.
-    if user.get('role') != 'client' or project.get('client_id') != user_id:
+    if user.get('role') != 'hire' or project.get('client_id') != user_id:
         return jsonify({'message': 'Access denied'}), 403
 
     page  = request.args.get('page',  1,  type=int)
@@ -51,7 +51,7 @@ def create_proposal():
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    if user.get('role') != 'freelancer':
+    if user.get('role') != 'work':
         return jsonify({'message': 'Only freelancers can submit proposals'}), 403
 
     data = request.get_json(silent=True)

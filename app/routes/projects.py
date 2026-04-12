@@ -35,7 +35,7 @@ def get_my_projects():
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
-    if user.get('role') == 'client':
+    if user.get('role') == 'hire':
         # Propriétaire de projet : récupère ses propres projets
         result = ProjectModel.find_by_client(user_id)
     else:
@@ -45,6 +45,13 @@ def get_my_projects():
         status   = request.args.get('status',   'pending')  # Par défaut pending pour freelancers
         category = request.args.get('category', None)
         skill    = request.args.get('skill',    None)
+
+        # Treat "all" as no status filter so frontend "All" tab returns full list.
+        if status == 'all':
+            status = None
+
+        if status and status not in ProjectModel.VALID_STATUSES:
+            return jsonify({'message': f'Invalid status. Must be one of: {", ".join(ProjectModel.VALID_STATUSES)}'}), 422
 
         result = ProjectModel.find_all(page=page, limit=limit, status=status, category=category, skill=skill)
 
@@ -102,7 +109,7 @@ def create_project():
         return jsonify({'message': 'User not found'}), 404
 
     # Vérifier que l'utilisateur est un client/propriétaire de projet
-    if user.get('role') != 'client':
+    if user.get('role') != 'hire':
         return jsonify({'message': 'Only clients can create projects'}), 403
 
     data = request.get_json(silent=True)
